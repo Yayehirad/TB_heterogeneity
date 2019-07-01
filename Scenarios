@@ -1,0 +1,269 @@
+g#Scenarios
+library(deSolve)
+library(reshape2)
+library(ggplot2)
+library(ggpubr)
+threeIIC_model=function(current_timepoint, state_values, parameters)
+{
+  
+  #creat state variables (local variables)
+  S=state_values[1] #fully susceptible 
+  L1=state_values[2] #early latency
+  L2=state_values[3] #late latency
+  I0=state_values[4] #infectious non-spreaders
+  I1=state_values[5] #infectious spreaders
+  I2=state_values[6] #infectious Super-spreaders
+  
+  
+  with(
+    as.list(parameters), #variable names within parameters can be used
+    {
+      #Intervention
+      CDR_i_posibl=CDR_b+(1-CDR_b)*(q)#possible intervention size
+      CDR_max=0.9#maximum possible CDR that the health system acan do
+      CDR_i=min(CDR_i_posibl,CDR_max)#intervention CDR that can be used in model
+      n=I0/(I0+I1+I2)
+      l=I1/(I0+I1+I2)
+      s=I2/(I0+I1+I2)
+      cdr2_imax_possible=(CDR_i-(n+l)*CDR_b)/s#super-spreader CDR intervention 
+      cdr2_imax=min(cdr2_imax_possible,CDR_max)#the limit that SS CDR can take
+      
+      cdr2_i=CDR_i+((cdr2_imax-CDR_i)*d)# Super-Spreaders CDR to be used in the model
+      cdr1_i=(CDR_i-(s*cdr2_i))/(n+l)#low-spreaders CDR to be used in the model
+      cdr0_i=cdr1_i#non-spreaders CDR
+      
+      # code for all CDRS channgins as cdr2 changes and this change deltas
+      delta0=(cdr0_i*(gamma0+mui0+mu+h)/(1-cdr0_i))
+      delta1=(cdr1_i*(gamma1+mui1+mu+j)/(1-cdr1_i))
+      delta2=(cdr2_i*(gamma2+mui2+mu)/(1-cdr2_i))
+      #compute derivative
+      dS=(mu*N+mui0*I0+mui1*I1+mui2*I2)+
+        (delta0*I0+delta1*I1+delta2*I2)-
+        ((beta0*I0+beta1*I1+beta2*I2)/N)*S-mu*S
+      dL1=((beta0*I0+beta1*I1+beta2*I2)/N)*S+(r*(beta0*I0+beta1*I1+beta2*I2)/N)*L2-
+        (epsilon0+epsilon1+epsilon2+mu+kappa)*L1
+      dL2=kappa*L1+(gamma0*I0+gamma1*I1+gamma2*I2)-
+        (r*(beta0*I0+beta1*I1+beta2*I2)/N)*L2-(nu0+nu1+nu2+mu)*L2
+      dI0=(epsilon0*L1+nu0*L2)-(mui0+mu+gamma0+delta0+h)*I0
+      dI1=(epsilon1*L1+nu1*L2+h*I0)-(mui1+mu+gamma1+delta1+j)*I1
+      dI2=(epsilon2*L1+nu2*L2+j*I1)-(mui2+mu+gamma2+delta2)*I2
+      
+      dinc=(epsilon0*L1+nu0*L2)+(epsilon1*L1+nu1*L2)+(epsilon2*L1+nu2*L2)
+      
+      #combine results
+      results=c(dS, dL1, dL2, dI0,dI1,dI2, dinc)
+      list(results)
+    }
+  )
+}
+# Set parameters 
+#proportions from Vic contact tracing data
+N=1
+
+a=0.58
+b=0.31
+c=0.11
+alpha=0.22
+r=0.21
+Time_L1=1/4#time in L1 
+Time_L2=20#time in L2
+Time_I=3#time in I
+mu= 1/65#
+total_outflows_I=(1/Time_I)-mu
+beta0<-0
+
+beta2<-40#40-60
+
+P_epsilon=0.1004#
+P_nu=0.039#
+P_mui0=0.077#
+P_mui1= 0.077#
+P_mui2=0.534#
+P_h=0.045#
+P_j=0.045#
+beta1<-beta2*alpha
+epsilon=P_epsilon*(1/Time_L1)
+epsilon0=epsilon*a
+epsilon1=epsilon*b
+epsilon2=epsilon*c
+kappa=(1/Time_L1)-(epsilon) 
+nu=P_nu*(1/Time_L2)
+nu0=nu*a
+nu1=nu*b
+nu2=nu*c
+
+mui0=P_mui0*total_outflows_I
+mui1=P_mui1*total_outflows_I
+mui2=P_mui2*total_outflows_I
+
+h=P_h*total_outflows_I
+j=P_j*total_outflows_I
+
+gamma0=total_outflows_I-(mui0)
+gamma1=total_outflows_I-(mui1)
+gamma2=total_outflows_I-(mui2)
+#baeseline scenario
+CDR_b=0.75#0.5-0.75
+#Baseline no intervention
+d=0
+q=0
+#mass intervention
+d=0
+q=0.1
+#targeted intervention
+d=0.8
+q=0.1
+
+##Initial values for sub population: 
+A=1 #Fully susceptible hosts
+B=0        #Early latent hosts
+C=0        #Late latent hosts
+D=1e-6*a    #active TB hosts proportion of extrapulmonary 15% of all infectious 
+E=1e-6*b # active TB Normal spreaders
+F=1e-6*c # active TB Super-spreader 10% of TB patients are super-spreaders
+G=0 # diagnosed 
+
+parameter_list=c(N=N,mu=mu,beta0=beta0, beta1=beta1, beta2=beta2,epsilon0=epsilon0,epsilon1=epsilon1,epsilon2=epsilon2, 
+                 kappa=kappa,gamma0=gamma0,gamma1=gamma1,gamma2=gamma2,nu0=nu0,nu1=nu1,nu2=nu2, 
+                 mui0=mui0,mui1=mui1,mui2=mui2,delta0=delta0,delta1=delta1,delta2=delta2,r=r,
+                 h=h,j=j)  
+
+#Initial state values for differential equasions
+initial_values=c(S=A-(D+E+F), L1=B, L2=C, I0=D,I1=E,I2=F,inc=D+E+F)
+
+## Output Time points
+times=seq(0, 5000, by = 1)
+#equi
+Sena_outputEq=as.data.frame(lsoda(initial_values, times, threeIIC_model, parameter_list))
+Nq=Sena_outputEq$S+Sena_outputEq$L1+Sena_outputEq$L2+Sena_outputEq$I0+
+  Sena_outputEq$I1+Sena_outputEq$I2
+plot(Nq,ylim=c(0,1))
+
+incidence=(diff(Sena_outputEq$inc)/Nq)*100000
+plot(incidence)
+
+S_eq=Sena_outputEq$S[length(Sena_outputEq$S)]
+L1_eq=Sena_outputEq$L1[length(Sena_outputEq$L1)]
+L2_eq=Sena_outputEq$L2[length(Sena_outputEq$L2)]
+I0_eq=Sena_outputEq$I0[length(Sena_outputEq$I0)]
+I1_eq=Sena_outputEq$I1[length(Sena_outputEq$I1)]
+I2_eq=Sena_outputEq$I2[length(Sena_outputEq$I2)]
+#Intervention
+initial_values=c(S=  S_eq, L1=L1_eq, L2=  L2_eq, I0= I0_eq,I1= I1_eq,I2= I2_eq,inc= I0_eq+I1_eq+ I2_eq)#done
+s3ICoutput=as.data.frame(lsoda(initial_values, times, threeIIC_model, parameter_list))
+#View(soutput)
+### fill vectors with results
+s3ICvS=s3ICoutput$S
+s3ICvL1=s3ICoutput$L1
+s3ICvL2=s3ICoutput$L2
+s3ICvI0=s3ICoutput$I0
+s3ICvI1=s3ICoutput$I1
+s3ICvI2=s3ICoutput$I2
+s3ICvtime=s3ICoutput$time
+s3ICvinc=s3ICoutput$inc
+
+
+
+
+#Bseline
+Baseline_Incidence=(diff(s3ICvinc)/Nq)*100000
+max(Baseline_Incidence)
+plot(Baseline_Incidence)
+
+#scenario 1 high beta,high CDR
+
+Baseline1_Incidence=(diff(s3ICvinc)/Nq)*100000
+Mass1_Incidence=(diff(s3ICvinc)/Nq)*100000
+Targeted1_Incidence=(diff(s3ICvinc)/Nq)*100000
+
+Scenario1=cbind(s3ICvtime,Baseline1_Incidence,Mass1_Incidence,Targeted1_Incidence)
+View(Scenario1)
+write.csv(x=Scenario1,file = './/output/Scenari_1jt.csv')
+#scenario 2 High beta low CDR
+Baseline2_Incidence=(diff(s3ICvinc)/Nq)*100000
+Mass2_Incidence=(diff(s3ICvinc)/Nq)*100000
+Targeted2_Incidence=(diff(s3ICvinc)/Nq)*100000
+Scenario2=cbind(s3ICvtime,Baseline2_Incidence,Mass2_Incidence,Targeted2_Incidence)
+View(Scenario2)
+write.csv(x=Scenario2,file = '..//heterogeneity/output/Scenari_2jt.csv')
+
+#scenario 3 low beta high CDR
+Baseline3_Incidence=(diff(s3ICvinc)/Nq)*100000
+plot(Baseline3_Incidence,xlim = c(0,4000))
+Mass3_Incidence=(diff(s3ICvinc)/Nq)*100000
+Targeted3_Incidence=(diff(s3ICvinc)/Nq)*100000
+Scenario3=cbind(s3ICvtime,Baseline3_Incidence,Mass3_Incidence,Targeted3_Incidence)
+View(Scenario3)
+write.csv(x=Scenario3,file = '..//heterogeneity/output/Scenari_3jt.csv')
+#scenario 4 low beta low CDR
+Baseline4_Incidence=(diff(s3ICvinc)/Nq)*100000
+Mass4_Incidence=(diff(s3ICvinc)/Nq)*100000
+Targeted4_Incidence=(diff(s3ICvinc)/Nq)*100000
+Scenario4=cbind(s3ICvtime,Baseline4_Incidence,Mass4_Incidence,Targeted4_Incidence)
+View(Scenario4)
+
+write.csv(x=Scenario4,file = '..//heterogeneity/output/Scenari_4.csv')
+
+#plot
+#1
+g_Scenario1=read.csv(file.choose(),header=T)
+g_Scenario1=melt(g_Scenario1,id='Time')
+g_Sc1<-ggplot(g_Scenario1,aes(x=Time,y=value,colour=variable))+
+  geom_line(size=1.3)+
+  xlim(0,20)+
+  ylim(0,450)+
+  ylab("")+
+  xlab("Time in years")+
+  ggtitle("A")+
+  theme(legend.title = element_blank())
+  #theme(plot.margin = unit(c(0,0,0,0), "cm"))
+g_Sc1
+#2
+g_Scenario2=read.csv(file.choose(),header = T)
+g_Scenario2=melt(g_Scenario2,id='Time')
+g_Sc2<-ggplot(g_Scenario2,aes(x=Time,y=value,colour=variable))+
+  geom_line(size=1.3)+
+  xlim(0,20)+
+  ylim(0,450)+
+  ylab("")+
+  xlab("Time in years")+
+  ggtitle("B")+
+  theme(legend.title = element_blank())
+  #theme(plot.margin = unit(c(0,0,0,0), "cm"))
+g_Sc2
+#3
+g_Scenario3=read.csv(file.choose(),header = T)
+g_Scenario3=melt(g_Scenario3,id='Time')
+
+g_Sc3<-ggplot(g_Scenario3,aes(x=Time,y=value,colour=variable))+
+  geom_line(size=1.3)+
+  xlim(0,20)+
+  ylim(0,450)+
+  ylab("")+
+  xlab("Time in years")+
+  ggtitle("C")+
+  theme(legend.title = element_blank())
+  #theme(plot.margin = unit(c(0,0,0,0), "cm"))
+g_Sc3
+#4
+g_Scenario4=read.csv(file.choose(),header = T)
+g_Scenario4=melt(g_Scenario4,id='Time')
+
+g_Sc4<-ggplot(g_Scenario4,aes(x=Time,y=value,colour=variable))+
+  geom_line(size=1.3)+
+  xlim(0,20)+
+  ylim(0,450)+
+  ylab("")+
+  xlab("Time in years")+
+  ggtitle("D")+
+  theme(legend.title = element_blank())
+  #theme(plot.margin = unit(c(0,0,0,0), "cm"))
+g_Sc4
+
+F0<-ggarrange( g_Sc1,g_Sc2,g_Sc3,g_Sc4,ncol=2, nrow=2, common.legend = TRUE, legend="bottom")
+annotate_figure(F0,left = text_grob("Incidence per 100,000 population",size=12,rot = 90))
+
+
+
+
+
