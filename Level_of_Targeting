@@ -1,0 +1,366 @@
+#Scenarios
+library(deSolve)
+library(reshape2)
+library(ggplot2)
+library(ggpubr)
+library(viridis)
+Baseline_model=function(current_timepoint, state_values, parameters)
+{
+  #creat state variables (local variables)
+  S=state_values[1] #fully susceptible 
+  L1=state_values[2] #early latency
+  L2=state_values[3] #late latency
+  I0=state_values[4] #infectious non-spreaders
+  I1=state_values[5] #infectious spreaders
+  I2=state_values[6] #infectious Super-spreaders
+  
+  
+  with(
+    as.list(parameters), #variable names within parameters can be used
+    {
+      
+      #compute derivative
+      dS=(mu*N+mui0*I0+mui1*I1+mui2*I2)+
+        (delta0_b*I0+delta1_b*I1+delta2_b*I2)-
+        ((beta0*I0+beta1*I1+beta2*I2)/N)*S-mu*S
+      dL1=((beta0*I0+beta1*I1+beta2*I2)/N)*S+
+        (r*(beta0*I0+beta1*I1+beta2*I2)/N)*L2-
+        (epsilon0+epsilon1+epsilon2+mu+kappa)*L1
+      dL2=kappa*L1+(gamma0*I0+gamma1*I1+gamma2*I2)-
+        (r*(beta0*I0+beta1*I1+beta2*I2)/N)*L2-(nu0+nu1+nu2+mu)*L2
+      dI0=(epsilon0*L1+nu0*L2)-(mui0+mu+gamma0+delta0_b+h)*I0
+      dI1=(epsilon1*L1+nu1*L2+h*I0)-(mui1+mu+gamma1+delta1_b+j)*I1
+      dI2=(epsilon2*L1+nu2*L2+j*I1)-(mui2+mu+gamma2+delta2_b)*I2
+      
+      dinc=(epsilon0*L1+nu0*L2)+(epsilon1*L1+nu1*L2)+(epsilon2*L1+nu2*L2)
+      
+      #combine results
+      results=c(dS, dL1, dL2, dI0,dI1,dI2, dinc)
+      list(results)
+    }
+  )
+}
+
+#Intervention model
+
+intervention_model=function(current_timepoint, state_values, parameters)
+{
+  
+  S=state_values[1] #fully susceptible 
+  L1=state_values[2] #early latency
+  L2=state_values[3] #late latency
+  I0=state_values[4] #infectious non-spreaders
+  I1=state_values[5] #infectious spreaders
+  I2=state_values[6] #infectious Super-spreaders
+  
+  #creat state variables (local variables)
+  
+  
+  with(
+    as.list(parameters), #variable names within parameters can be used
+    {
+      
+      
+      #intervention 
+      n=I0/(I0+I1+I2)
+      l=I1/(I0+I1+I2)
+      s=I2/(I0+I1+I2)
+      
+      CDR_i=CDR_b+(1-CDR_b)*q
+      CDR_max=0.9
+      cdr2_imax_possible=(CDR_i-(n+l)*CDR_b)/s
+      cdr2_imax=min(cdr2_imax_possible,CDR_max)
+      
+      cdr2_i=CDR_i+(cdr2_imax-CDR_i)*d
+      cdr1_i=(CDR_i-s*cdr2_i)/(n+l)
+      cdr0_i=cdr1_i
+      
+      delta0_i=(cdr0_i*(gamma0+mui0+mu+h)/(1-cdr0_i))
+      delta1_i=(cdr1_i*(gamma1+mui1+mu+j)/(1-cdr1_i))
+      delta2_i=(cdr2_i*(gamma2+mui2+mu)/(1-cdr2_i))
+      
+      #compute derivative
+      dS=(mu*N+mui0*I0+mui1*I1+mui2*I2)+(delta0_i*I0+delta1_i*I1+delta2_i*I2)-
+        ((beta0*I0+beta1*I1+beta2*I2)/N)*S-mu*S
+      dL1=((beta0*I0+beta1*I1+beta2*I2)/N)*S+(r*(beta0*I0+beta1*I1+beta2*I2)/N)*L2-
+        (epsilon0+epsilon1+epsilon2+mu+kappa)*L1
+      dL2=kappa*L1+(gamma0*I0+gamma1*I1+gamma2*I2)-
+        (r*(beta0*I0+beta1*I1+beta2*I2)/N)*L2-(nu0+nu1+nu2+mu)*L2
+      dI0=(epsilon0*L1+nu0*L2)-(mui0+mu+gamma0+delta0_i+h)*I0
+      dI1=(epsilon1*L1+nu1*L2+h*I0)-(mui1+mu+gamma1+delta1_i+j)*I1
+      dI2=(epsilon2*L1+nu2*L2+j*I1)-(mui2+mu+gamma2+delta2_i)*I2
+      
+      dinc=(epsilon0*L1+nu0*L2)+(epsilon1*L1+nu1*L2)+(epsilon2*L1+nu2*L2)
+      
+      #combine results
+      results=c(dS, dL1, dL2, dI0,dI1,dI2, dinc)
+      list(results)
+    }
+  )
+}
+
+# Set parameters 
+#proportions from Vic contact tracing data
+N=1
+
+a=0.58
+b=0.31
+c=0.11
+alpha=0.22
+r=0.21
+Time_L1=1/4#time in L1 
+Time_L2=20#time in L2
+Time_I=3#time in I
+mu= 1/65#
+total_outflows_I=(1/Time_I)-mu
+beta0<-0
+#Scenario 1 both high
+beta2<-60#40-60
+CDR_b=0.75#0.5-0.75
+#Scenario 2  high beta & low cdr
+#beta2<-60#40-60
+#CDR_b=0.5#0.5-0.75
+#Scenario 3 low beta & high cdr
+#beta2<-40#40-60
+#CDR_b=0.75#0.5-0.75
+#Scenario 4 both low
+#beta2<-40#40-60
+#CDR_b=0.5#0.5-0.75
+
+P_epsilon=0.1004#
+P_nu=0.039#
+P_mui0=0.077#
+P_mui1= 0.077#
+P_mui2=0.534#
+P_h=0.045#
+P_j=0.045#
+beta1<-beta2*alpha
+epsilon=P_epsilon*(1/Time_L1)
+epsilon0=epsilon*a
+epsilon1=epsilon*b
+epsilon2=epsilon*c
+kappa=(1/Time_L1)-(epsilon) 
+nu=P_nu*(1/Time_L2)
+nu0=nu*a
+nu1=nu*b
+nu2=nu*c
+
+mui0=P_mui0*total_outflows_I
+mui1=P_mui1*total_outflows_I
+mui2=P_mui2*total_outflows_I
+
+h=P_h*total_outflows_I
+j=P_j*total_outflows_I
+
+gamma0=total_outflows_I-(mui0)
+gamma1=total_outflows_I-(mui1)
+gamma2=total_outflows_I-(mui2)
+
+#baseline CDR
+cdr0_b=CDR_b
+cdr1_b=CDR_b
+cdr2_b=CDR_b
+delta0_b=(cdr0_b*(gamma0+mui0+mu+h)/(1-cdr0_b))
+delta1_b=(cdr1_b*(gamma1+mui1+mu+j)/(1-cdr1_b))
+delta2_b=(cdr2_b*(gamma2+mui2+mu)/(1-cdr2_b))
+
+
+##Initial values for sub population: 
+A=1 #Fully susceptible hosts
+B=0        #Early latent hosts
+C=0        #Late latent hosts
+D=1e-6*a    #active TB hosts proportion of extrapulmonary 15% of all infectious 
+E=1e-6*b # active TB Normal spreaders
+F=1e-6*c # active TB Super-spreader 10% of TB patients are super-spreaders
+G=0 # diagnosed 
+
+parameter_list=c(N=N,mu=mu,beta0=beta0, beta1=beta1, beta2=beta2,epsilon0=epsilon0,epsilon1=epsilon1,epsilon2=epsilon2, 
+                 kappa=kappa,gamma0=gamma0,gamma1=gamma1,gamma2=gamma2,nu0=nu0,nu1=nu1,nu2=nu2, 
+                 mui0=mui0,mui1=mui1,mui2=mui2,delta0=delta0,delta1=delta1,delta2=delta2,r=r,
+                 h=h,j=j)  
+n=21
+z=21
+H=matrix(rep(0,n*z),nrow=n)
+i=0
+for (q in seq(from=0.0, to=0.4,length.out=z)){ 
+  i=i+1
+  k=0
+  for(d in seq(from=0.0, to=1,length.out=n)){
+    k = k+1
+
+#RUN Baseline Model
+initial_values=c(S=A-(D+E+F), L1=B, L2=C, I0=D,I1=E,I2=F,inc=D+E+F)
+times=seq(0, 2000, by = 1)
+B_out <- as.data.frame(lsoda(initial_values, times, Baseline_model, parameter_list))
+Nq=B_out$S+B_out$L1+B_out$L2+B_out$I0+B_out$I1+B_out$I2
+incidence_B_out=(diff(B_out$inc)/Nq)*100000
+
+ChangeI=abs(incidence_B_out[length(incidence_B_out)-1]-
+              incidence_B_out[length(incidence_B_out)-2])
+
+max_iter = 100
+n_iter = 0
+while( ChangeI>1.0e-20 && n_iter<max_iter){
+  n_iter = n_iter + 1
+  initial_values=c(S=B_out$S[length(B_out$S)],L1=B_out$L1[length(B_out$L1)],L2=B_out$L2[length(B_out$L2)],I0=B_out$I0[length(B_out$I0)],I1=B_out$I1[length(B_out$I1)],
+                   I2=B_out$I2[length(B_out$I2)],inc=B_out$I0[length(B_out$I0)]+B_out$I1[length(B_out$I1)]+B_out$I2[length(B_out$I2)])
+  times=times=seq(0, 500, by = 1)
+  B_out <- as.data.frame(lsoda(initial_values, times, Baseline_model, parameter_list))
+  Nq=B_out$S+B_out$L1+B_out$L2+B_out$I0+B_out$I1+B_out$I2
+  incidence_B_out=(diff(B_out$inc)/Nq)*100000
+  ChangeI=abs(incidence_B_out[length(incidence_B_out)-1]-
+                incidence_B_out[length(incidence_B_out)-2])
+}
+B_Incidence_time_n = incidence_B_out[length(incidence_B_out)-1] #the model reaches equilibrium at time around 500
+#print(Change_inc)
+#plot(incidence_B_out)
+#B_out$inc[length(B_out$inc)]
+#plot(B_out$inc)
+#plot(B_out$S)
+#plot(B_out$L1)
+#plot(B_out$L2)
+#plot(B_out$I0)
+#plot(B_out$I1)
+#plot(B_out$I2)
+
+S_eq=B_out$S[length(B_out$S)]
+L1_eq=B_out$L1[length(B_out$L1)]
+L2_eq=B_out$L2[length(B_out$L2)]
+I0_eq=B_out$I0[length(B_out$I0)]
+I1_eq=B_out$I1[length(B_out$I1)]
+I2_eq=B_out$I2[length(B_out$I2)]
+
+#record compartment values at equilibrium
+Equi_initial_values=c(S=S_eq, L1=L1_eq, L2=L2_eq, I0=I0_eq,I1=I1_eq,I2=I2_eq,inc=(I0_eq+I1_eq+I2_eq))
+
+#RUN Intervention model, 
+Int_out <- as.data.frame(lsoda(Equi_initial_values, times, intervention_model, parameter_list))
+
+Nq=Int_out$S+Int_out$L1+Int_out$L2+Int_out$I0+Int_out$I1+Int_out$I2
+Int_incidence_out=(diff(Int_out$inc)/Nq)*100000
+#plot(Int_out$I2,xlim=c(0,100),type='l',lwd=2)
+#considering a 20 years impact of intervention
+Int_Incidence_time_n = Int_incidence_out[20]
+#print(Int_Incidence_time_n)
+#calculate the difference between baseline incidence and intervention incidence
+Change_inc=B_Incidence_time_n-Int_Incidence_time_n 
+Relative_change<-(Change_inc/B_Incidence_time_n)*100
+print("baseline")
+print(B_Incidence_time_n)
+print("intervention")
+print(Int_Incidence_time_n)
+
+H[k,i]=Relative_change
+  }
+ 
+}
+rownames(H) <- c("0.00", "0.05", "0.10", "0.15", "0.20", "0.25", "0.30", 
+                 "0.35", 0.40, "0.45", "0.50", "0.55", "0.60", "0.65", "0.70",
+                 "0.75", "0.80", "0.85", "0.90", "0.95", "1.00")
+colnames(H)<-c("0.00", "0.02", "0.04", "0.06", "0.08", "0.10", "0.12",
+               "0.14", "0.16", "0.18", "0.20", "0.22", "0.24", "0.26", "0.28",
+               "0.30", "0.32", "0.34", "0.36", "0.38", "0.40")
+
+
+
+#heatmap
+
+#change col names by 0.00 0.04 0.08 0.12 0.16 0.20 0.24 0.28 0.32 0.36 0.40
+#change row names by  0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0
+
+#produce each matrix
+H_A<-H
+H_B<-H
+H_C<-H
+H_D<-H
+# set range
+
+rng2=range(c((H_A),(H_B),(H_C),(H_D)))
+
+
+#HH_1=read.csv(file.choose(),header = T,row.names = 1)
+#HH_1m=as.matrix(HH_1)
+HH_1melt=melt(H_A)
+HSc1<-HH_1melt
+A_gp<-ggplot(data=HH_1melt,aes(x=Var2,y=Var1,fill=value))+
+  geom_tile()+
+  scale_fill_gradient2(low="red", mid="blue", high="green", 
+                       midpoint=mean(rng2), breaks=seq(0,60,10),
+                     limits=c(0, 58))+
+  ylab("Targeting super-spreaders")+
+  xlab("Relative CDR increase")+
+  labs(fill="Relative incidence reduction %")+
+  ggtitle("A")+
+  #scale_y_continuous(expand = c(0,0)) + 
+  #scale_x_discrete(expand = c(0,0))+
+  theme(panel.background = element_blank())+
+  theme(axis.line = element_line(colour="black"))+
+  theme(panel.border = element_blank())
+  
+A_gp
+#scenario 2
+
+HH_2melt=melt(H_B)
+HSc2<-HH_2melt
+B_gp<-ggplot(data=HH_2melt,aes(x=Var2,y=Var1,fill=value))+
+  geom_tile()+
+  scale_fill_gradient2(low="red", mid="blue", high="green", 
+                       midpoint=mean(rng2), breaks=seq(0,60,10),
+                       limits=c(0, 58))+
+  ylab("Targeting super-spreaders")+
+  xlab("Relative CDR increase")+
+  labs(fill="Relative incidence reduction %")+
+  ggtitle("B")+
+  theme(panel.background = element_blank())+
+  theme(axis.line = element_line(colour="black"))+
+  theme(panel.border = element_blank())
+ # scale_y_continuous(expand = c(0,0)) + 
+  #scale_x_discrete(expand = c(0,0))
+B_gp
+#scenario 3
+
+HH_3melt=melt(H_C)
+HSc3<-HH_3melt
+C_gp<-ggplot(data=HH_3melt,aes(x=Var2,y=Var1,fill=value))+
+  geom_tile()+
+  scale_fill_gradient2(low="red", mid="blue", high="green", 
+                       midpoint=mean(rng2), breaks=seq(0,60,10),
+                       limits=c(0, 58))+
+  ylab("Targeting super-spreaders")+
+  xlab("Relative CDR increase")+
+  labs(fill="incidence reduction")+
+  ggtitle("C")+
+  theme(panel.background = element_blank())+
+  theme(axis.line = element_line(colour="black"))+
+  theme(panel.border = element_blank())
+  #scale_y_continuous(expand = c(0,0)) + 
+  #scale_x_discrete(expand = c(0,0))
+C_gp
+#scenario 4
+
+HH_4melt=melt(H_D)
+HSc4<-HH_4melt
+D_gp<-ggplot(data=HH_4melt,aes(x=Var2,y=Var1,fill=value))+
+  geom_tile()+
+  scale_fill_gradient2(low="red", mid="blue", high="green", 
+                       midpoint=mean(rng2),breaks=seq(0,60,10),
+                       limits=c(0, 58))+
+  
+  ylab("Targeting super-spreaders")+
+  xlab("Relative CDR increase")+
+  labs(fill="Relative incidence reduction %")+
+  ggtitle("D")+
+  theme(panel.background = element_blank())+
+  theme(axis.line = element_line(colour="black"))+
+  theme(panel.border = element_blank())
+  #scale_y_continuous(expand = c(0,0)) + 
+  #scale_x_discrete(expand = c(0,0))
+D_gp
+heats<-ggarrange( A_gp,B_gp,C_gp,D_gp,ncol=2, nrow=2, common.legend = TRUE, legend="bottom")
+heats
+
+annotate_figure(heats,left = text_grob("Incidence per 100,000 population",size=12,rot = 90))
+
+
+
+
