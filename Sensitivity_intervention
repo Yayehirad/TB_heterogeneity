@@ -1,4 +1,4 @@
-#not yet done
+#Sensitivity of relative reduction to param ranges
 library(deSolve)
 library(reshape2)
 library(ggplot2)
@@ -62,16 +62,20 @@ intervention_model=function(current_timepoint, state_values, parameters)
     as.list(parameters), #variable names within parameters can be used
     {
       #intervention
+      params <- as.list(c(params_matrix_Sint[i,]))
       CDR_i_posibl=params$cdr_b+(1-params$cdr_b)*(params$q)#possible intervention size
       CDR_max=0.9#maximum possible CDR that the health system acan do
       CDR_i=min(CDR_i_posibl,CDR_max)#intervention CDR that can be used in model
-      params_matrix_Sint$CDR_inter[i]=CDR_i#fill the parameter matrix
+
       
-      cdr2_imax_possible=(CDR_i-(params$a+params$b)*params$cdr_b)/params$c#super-spreader CDR intervention 
+      n=I0/(I0+I1+I2)
+      l=I1/(I0+I1+I2)
+      s=I2/(I0+I1+I2)
+      cdr2_imax_possible=(CDR_i-(n+l)*params$cdr_b)/s#super-spreader CDR intervention 
       cdr2_imax=min(cdr2_imax_possible,CDR_max)#the limit that SS CDR can take
       
       cdr2_i=CDR_i+((cdr2_imax-CDR_i)*params$d)# Super-Spreaders CDR to be used in the model
-      cdr1_i=(CDR_i-(params$c*cdr2_i))/(params$a+params$b)#low-spreaders CDR to be used in the model
+      cdr1_i=(CDR_i-(s*cdr2_i))/(n+l)#low-spreaders CDR to be used in the model
       cdr0_i=cdr1_i#non-spreaders CDR
      
       #compute deltas for the BIntervention_model
@@ -82,17 +86,23 @@ intervention_model=function(current_timepoint, state_values, parameters)
       #compute derivative
       dS=(mu*N+mui0*I0+mui1*I1+mui2*I2)+(delta0_i*I0+delta1_i*I1+delta2_i*I2)-
         ((beta0*I0+beta1*I1+beta2*I2)/N)*S-mu*S
+      
       dL1=((beta0*I0+beta1*I1+beta2*I2)/N)*S+(r*(beta0*I0+beta1*I1+beta2*I2)/N)*L2-
         (epsilon0+epsilon1+epsilon2+mu+kappa)*L1
+      
       dL2=kappa*L1+(gamma0*I0+gamma1*I1+gamma2*I2)-
         (r*(beta0*I0+beta1*I1+beta2*I2)/N)*L2-(nu0+nu1+nu2+mu)*L2
+      
       dI0=(epsilon0*L1+nu0*L2)-(mui0+mu+gamma0+delta0_i+h)*I0
+      
       dI1=(epsilon1*L1+nu1*L2+h*I0)-(mui1+mu+gamma1+delta1_i+j)*I1
+      
       dI2=(epsilon2*L1+nu2*L2+j*I1)-(mui2+mu+gamma2+delta2_i)*I2
       
       dinc=(epsilon0*L1+nu0*L2)+(epsilon1*L1+nu1*L2)+(epsilon2*L1+nu2*L2)
             #combine results
       results=c(dS, dL1, dL2, dI0,dI1,dI2, dinc)
+      
       list(results)
     }
   )
@@ -102,28 +112,32 @@ intervention_model=function(current_timepoint, state_values, parameters)
 #save here
 # beginning to shift this code over to being based on lists, to avoid repeated calculations using LHS to sample from a particular window
 param_value_limits <- list(N= list(min = 1, max = 1),
-                           Pinf = list(min = 0.22, max = 0.62),
-                           Pss = list(min = 0.11, max = 0.41),
-                           alpha = list(min = 0.12, max = 0.32),
+                           Pinf = list(min = 0.39, max = 0.46),
+                           Pss = list(min = 0.1, max = 0.29),
+                           m = list(min = 3.69, max = 5.88),
                            
-                           P_epsilon = list(min = 0.074, max = 0.128),
-                           P_nu = list(min = 0.018, max = 0.077), 
+                           epsilon = list(min = 0.307, max = 0.548),
+                           nu = list(min = 0.0009, max = 0.004), 
                            
-                           mu = list(min = 1/55, max = 1/75),
-                           Time_L1=list(min = 0.167, max = 1.0),
+                           mu = list(min = 1/75, max =1/55 ),
+                           
+                           Time_L1=list(min = 0.25, max = 0.25),
                            Time_L2=list(min = 20, max = 20),
-                           Time_I=list(min = 3, max = 3),
+                           Time_I=list(min = 2, max = 4),
+                           
                            P_mui0 = list(min = 0.05, max = 0.096),
                            P_mui1 = list(min = 0.05, max = 0.096),
                            P_mui2 = list(min = 0.327, max = 0.787),
-                           r = list(min = 0.21, max = 0.21),
+                           
+                           r = list(min = 0.15, max = 0.14),
                            beta0 = list(min = 0, max = 0),
-                           beta2 = list(min = 40, max = 60),
+                           beta1 = list(min = 10, max = 15),
                            cdr_b = list(min = 0.5, max = 0.75),#baseline CDR
+                           
                            P_h = list(min = 0.0, max = 0.058),
                            P_j = list(min = 0.0, max = 0.058),
-                           q = list(min = 0.0, max = 0.4),
-                           d = list(min = 0, max = 1))
+                           q = list(min = 0.0, max = 0.4), 
+                           d = list(min = 0, max = 1)) 
 
 # Latin hypercube sampling
 z <- 1000 # choose number of points to simulate
@@ -143,77 +157,46 @@ for (parameter in seq(length(parameter_names))) {
     adjust_lhs_to_range(lhs[, parameter], param_name, param_value_limits)
 }
 View(params_matrix_i)
+# Initialise empty data frame with correct number of rows to store parameter values
+params_matrix <- data.frame(matrix(NA, nrow = z, ncol = 0))
+View(params_matrix)
+# Populate the parameter data frame sequentially by column from lhs sampling
+parameter_names <- names(param_value_limits)
+for (parameter in seq(length(parameter_names))) {
+  param_name <- parameter_names[parameter]
+  params_matrix[param_name] <- 
+    adjust_lhs_to_range(lhs[, parameter], param_name, param_value_limits)
+}
+# Add colums for parameters and outputs
+params_matrix_Sint <- params_matrix
+derived_params <- c("a","b","c","beta2","Total_L1","epsilon0", "epsilon1", "epsilon2", "kappa", "nu0", "nu1", "nu2", 
+                    "Total_I","mui0", "mui1", "mui2", "gamma0",
+                    "gamma1", "gamma2", "h", "j",  "B_incidence",
+                    "Int_incidence","Change_incidence","Relative_change" )
+for (i in derived_params) {
+  params_matrix_Sint[[i]] <- NA
+}
 
-
-#add colums for parameters to be calculated from lhs sample
-a = data.frame('a'=rep(NA,z))
-b = data.frame('b'=rep(NA,z))
-c = data.frame('c'=rep(NA,z))
-
-beta1 = data.frame('beta1'=rep(NA,z))
-Total_L1=data.frame('Total_L1'=rep(NA,z))
-Total_L2=data.frame('Total_L2'=rep(NA,z))
-Total_I=data.frame('Total_I'=rep(NA,z))
-epsilon = data.frame('epsilon'=rep(NA,z))
-epsilon0 = data.frame('epsilon0'=rep(NA,z))
-epsilon1 = data.frame('epsilon1'=rep(NA,z))
-epsilon2 = data.frame('epsilon2'=rep(NA,z))
-
-kappa = data.frame('kappa'=rep(NA,z))
-nu = data.frame('nu'=rep(NA,z))
-nu0 = data.frame('nu0'=rep(NA,z))
-nu1 = data.frame('nu1'=rep(NA,z))
-nu2 = data.frame('nu2'=rep(NA,z))
-
-mui0 = data.frame('mui0'=rep(NA,z))
-mui1 = data.frame('mui1'=rep(NA,z))
-mui2 = data.frame('mui2'=rep(NA,z))
-
-gamma0 = data.frame('gamma0'=rep(NA,z))
-gamma1 = data.frame('gamma1'=rep(NA,z))
-gamma2 = data.frame('gamma2'=rep(NA,z))
-
-h = data.frame('h'=rep(NA,z))
-j = data.frame('j'=rep(NA,z))
-
-CDR_inter=data.frame('CDR_inter'=rep(NA,z))#intervention level CDR
-B_incidence = data.frame('B_incidence'=rep(NA,z))#baseline equilibrium incidence
-Int_incidence = data.frame('Int_incidence'=rep(NA,z))#10years intervention incidence
-Change_incidence= data.frame('Change_incidence'=rep(NA,z))#absolute incidence difference
-Relative_change=data.frame('Relative_change'=rep(NA,z))#relative incidence difference
-
-
-
-params_matrix_Sint=cbind(params_matrix_i,
-                         a,b,c,beta1,Total_L1,Total_L2,Total_I,
-                         epsilon,epsilon0,epsilon1,epsilon2,
-                         mui0,mui1,mui2,kappa, 
-                         nu,nu0,nu1,nu2,
-                         gamma0,gamma1,gamma2,h,j,
-                         CDR_inter,B_incidence,Int_incidence,
-                         Change_incidence,
-                         Relative_change)
 View(params_matrix_Sint)
 #View(output_matrix_equi)
 #compute a,b,c
 params_matrix_Sint$a=1-params_matrix_Sint$Pinf
 params_matrix_Sint$b=params_matrix_Sint$Pinf*(1-params_matrix_Sint$Pss)
 params_matrix_Sint$c=params_matrix_Sint$Pss*params_matrix_Sint$Pinf
-#compute beta1
-params_matrix_Sint$beta1=(params_matrix_Sint$beta2)*(params_matrix_Sint$alpha)
-#compute total outflows
-params_matrix_Sint$Total_L1=params_matrix_Sint$Time_L1^(-1)
-params_matrix_Sint$Total_L2=params_matrix_Sint$Time_L2^(-1)
+#compute beta2
+params_matrix_Sint$beta2=(params_matrix_Sint$beta1)*(params_matrix_Sint$m)
+#compute total outflows from L1 & I
+params_matrix_Sint$Total_L1=(params_matrix_Sint$Time_L1^(-1))-params_matrix_Sint$mu
 params_matrix_Sint$Total_I=(params_matrix_Sint$Time_I^(-1))-params_matrix_Sint$mu
 #compute epsilon
-params_matrix_Sint$epsilon=params_matrix_Sint$P_epsilon*params_matrix_Sint$Total_L1
+
 params_matrix_Sint$epsilon0=params_matrix_Sint$epsilon*params_matrix_Sint$a
 params_matrix_Sint$epsilon1=params_matrix_Sint$epsilon*params_matrix_Sint$b
 params_matrix_Sint$epsilon2=params_matrix_Sint$epsilon*params_matrix_Sint$c
 #compute kappa
 params_matrix_Sint$kappa=params_matrix_Sint$Total_L1-(params_matrix_Sint$epsilon)  
 #compute nu
-params_matrix_Sint$nu=params_matrix_Sint$P_nu*params_matrix_Sint$Total_L2
+
 params_matrix_Sint$nu0=params_matrix_Sint$nu*params_matrix_Sint$a
 params_matrix_Sint$nu1=params_matrix_Sint$nu*params_matrix_Sint$b
 params_matrix_Sint$nu2=params_matrix_Sint$nu*params_matrix_Sint$c
@@ -227,17 +210,14 @@ params_matrix_Sint$j=params_matrix_Sint$P_j*params_matrix_Sint$Total_I
 
 #compute gamma
 params_matrix_Sint$gamma0=params_matrix_Sint$Total_I-
-  (params_matrix_Sint$mui0)
+  (params_matrix_Sint$mui0+params_matrix_Sint$h)
 params_matrix_Sint$gamma1=params_matrix_Sint$Total_I-
-  (params_matrix_Sint$mui1)
+  (params_matrix_Sint$mui1+ params_matrix_Sint$j)
 params_matrix_Sint$gamma2=params_matrix_Sint$Total_I-
   (params_matrix_Sint$mui2)
 
 View(params_matrix_Sint)
-#compute deltas for the Baseline_model
-delta0_b=(cdr0_b*(params$gamma0+params$mui0+params$mu+params$h)/(1-cdr0_b))
-delta1_b=(cdr1_b*(params$gamma1+params$mui1+params$mu+params$j)/(1-cdr1_b))
-delta2_b=(cdr2_b*(params$gamma2+params$mui2+params$mu)/(1-cdr2_b))
+
 ##Initial values for sub population: 
 a=0.58 #proportion for I0
 b=0.31#proportion for I1
@@ -254,10 +234,14 @@ for(i in 1:z){
   str = paste("Iteration ", i, " out of ", z, sep='')
   print(str)
   params <- as.list(c(params_matrix_Sint[i,]))
+  
   cdr0_b=params$cdr_b#baseline CDR
   cdr1_b=params$cdr_b
   cdr2_b=params$cdr_b
-
+  #compute deltas for the Baseline_model
+  delta0_b=(cdr0_b*(params$gamma0+params$mui0+params$mu+params$h)/(1-cdr0_b))
+  delta1_b=(cdr1_b*(params$gamma1+params$mui1+params$mu+params$j)/(1-cdr1_b))
+  delta2_b=(cdr2_b*(params$gamma2+params$mui2+params$mu)/(1-cdr2_b))
   #RUN Baseline Model
   initial_values=c(S=A-(D+E+F), L1=B, L2=C, I0=D,I1=E,I2=F,inc=D+E+F)
   times=seq(0, 2000, by = 1)
@@ -272,8 +256,9 @@ for(i in 1:z){
  n_iter = 0
  while( ChangeI>1.0e-6 && n_iter<max_iter){
    n_iter = n_iter + 1
-   initial_values=c(S=min(B_out$S),L1=max(B_out$L1),L2=max(B_out$L2),I0=max(B_out$I0),I1=max(B_out$I1),
-                    I2=max(B_out$I2),inc=max(B_out$I0)+max(B_out$I1)+max(B_out$I2))
+   initial_values=c(S=B_out$S[length(B_out$S)], L1=B_out$L1[length(B_out$L1)], L2=B_out$L2[length(B_out$L2)], I0=B_out$I0[length(B_out$I0)],I1=B_out$I1[length(B_out$I1)],
+                    I2=B_out$I2[length(B_out$I2)],inc=B_out$I0[length(B_out$I0)]+B_out$I1[length(B_out$I1)]+B_out$I2[length(B_out$I2)])
+   
    times=times=seq(0, 500, by = 1)
    B_out <- as.data.frame(lsoda(initial_values, times, Baseline_model, params))
    Nq=B_out$S+B_out$L1+B_out$L2+B_out$I0+B_out$I1+B_out$I2
@@ -308,6 +293,7 @@ for(i in 1:z){
   params_matrix_Sint$Change_incidence[i]=Change_inc
   Relative_inc=((B_Incidence_time_n-Int_Incidence_time_n)/B_Incidence_time_n)*100
   params_matrix_Sint$Relative_change[i]=Relative_inc
+  
 }
 
 #started @1:52-2:04
@@ -320,16 +306,13 @@ params_matrix_Sint=read.csv(file.choose())
 View(params_matrix_Sint)
 
 
-#CDR baseline
+# 1 CDR baseline
 i_cdr_b=data.frame(cbind(params_matrix_Sint$cdr_b, params_matrix_Sint$Relative_change))
-#View(i_cdr_b)
+
 i_cdr_b_g=melt(i_cdr_b,id='X1')
 i_cdr_b_gp<-ggplot(i_cdr_b_g, aes(x=X1, y=value)) + 
   geom_point()+
-  geom_smooth(method = 'lm',se=FALSE,col='darkred')+
-  
   xlab("Baseline CDR")+
-  #theme(plot.margin=margin(t = 0, r = 0, b = 0, l = 0, unit = "pt"))+
   theme_bw()+
   theme(panel.grid.major = element_blank(), 
         panel.grid.minor = element_blank())+
@@ -337,211 +320,186 @@ i_cdr_b_gp<-ggplot(i_cdr_b_g, aes(x=X1, y=value)) +
   ylim(0,100)
 i_cdr_b_gp
 
-#level of intervention (q)
+#2 level of intervention (q)
 i_q=data.frame(cbind(params_matrix_Sint$q, params_matrix_Sint$Relative_change))
 i_q_g=melt(i_q,id='X1')
 i_q_gp<-ggplot(i_q_g, aes(x=X1, y=value)) + 
   geom_point()+
-  geom_smooth(method = 'lm',se=FALSE,col='darkred')+
-  xlab("Relative CDR increase ")+
+   xlab("q ")+
   ylim(0,100)+
-  #theme(plot.margin=margin(t = 0, r = 0, b = 0, l = 0, unit = "pt"))+
-  theme_bw()+
+   theme_bw()+
   theme(panel.grid.major = element_blank(), 
         panel.grid.minor = element_blank())+
   ylab("")
 i_q_gp
 
-#level of intervention (d)
+#3 level of intervention (d)
 i_d=data.frame(cbind(params_matrix_Sint$d, params_matrix_Sint$Relative_change))
 
 i_d_g=melt(i_d,id='X1')
 i_d_gp<-ggplot(i_d_g, aes(x=X1, y=value)) + 
   geom_point()+
-  geom_smooth(method = 'lm',se=FALSE,col='darkred')+
-  xlab("Targeting super-spreaders")+
+  xlab("d")+
   ylim(0,100)+
-  #theme(plot.margin=margin(t = 0, r = 0, b = 0, l = 0, unit = "pt"))+
   theme_bw()+
   theme(panel.grid.major = element_blank(), 
         panel.grid.minor = element_blank())+
    ylab("")
 i_d_gp
 
-#proportion of ss among infectious
+#4 proportion of ss among infectious
 i_c=data.frame(cbind(params_matrix_Sint$Pss, params_matrix_Sint$Relative_change))
 
 i_c_g=melt(i_c,id='X1')
 i_c_gp<-ggplot(i_c_g, aes(x=X1, y=value)) + 
   geom_point()+
-  geom_smooth(method = 'lm',se=FALSE,col='darkred')+
-  xlab("Super-spreader proportion")+
+  xlab("Proportion of super-spreader ")+
   ylim(0,100)+
-  #theme(plot.margin=margin(t = 0, r = 0, b = 0, l = 0, unit = "pt"))+
   theme_bw()+
   theme(panel.grid.major = element_blank(), 
         panel.grid.minor = element_blank())+
   ylab("")
 i_c_gp
 
-
-# Proportion of infectious
+# 5 Proportion of infectious
 i_b=data.frame(cbind(params_matrix_Sint$Pinf, params_matrix_Sint$Relative_change))
 
 i_b_g=melt(i_b,id='X1')
 i_b_gp<-ggplot(i_b_g, aes(x=X1, y=value)) + 
   geom_point()+
-  geom_smooth(method = 'lm',se=FALSE,col='darkred')+
-  xlab("Infectious TB proportion")+
+  xlab("Proportion of infectious TB")+
   ylim(0,100)+
-  #theme(plot.margin=margin(t = 0, r = 0, b = 0, l = 0, unit = "pt"))+
   theme_bw()+
   theme(panel.grid.major = element_blank(), 
         panel.grid.minor = element_blank())+
   ylab("")
 i_b_gp
 
-#beta2
-i_beta2=data.frame(cbind(params_matrix_Sint$beta2, params_matrix_Sint$Relative_change))
 
-i_beta2_g=melt(i_beta2,id='X1')
-i_beta2_gp<-ggplot(i_beta2_g, aes(x=X1, y=value)) + 
-  geom_point()+
-  geom_smooth(method = 'lm',se=FALSE,col='darkred')+
-  xlab("beta")+
-  ylim(0,100)+
-  theme(plot.margin=margin(t = 0, r = 0, b = 0, l = 0, unit = "pt"))+
-  theme_bw()+
-  theme(panel.grid.major = element_blank(), 
-        panel.grid.minor = element_blank())+
-  ylab("")
-i_beta2_gp
-#alpha
-i_alpha=data.frame(cbind(params_matrix_Sint$alpha, params_matrix_Sint$Relative_change))
-
-i_alpha_g=melt(i_alpha,id='X1')
-i_alpha_gp<-ggplot(i_alpha_g, aes(x=X1, y=value)) + 
-  geom_point()+
-  geom_smooth(method = 'lm',se=FALSE,col='darkred')+
-  xlab("alpha")+
-  ylim(0,100)+
-  theme(plot.margin=margin(t = 0, r = 0, b = 0, l = 0, unit = "pt"))+
-  theme_bw()+
-  theme(panel.grid.major = element_blank(), 
-        panel.grid.minor = element_blank())+
-  ylab("")
-i_alpha_gp
-#Epsilon
-i_epsilon=data.frame(cbind(params_matrix_Sint$P_epsilon, params_matrix_Sint$Relative_change))
+#6 Epsilon
+i_epsilon=data.frame(cbind(params_matrix_Sint$epsilon, params_matrix_Sint$Relative_change))
 
 i_epsilon_g=melt(i_epsilon,id='X1')
 i_epsilon_gp<-ggplot(i_epsilon_g, aes(x=X1, y=value)) + 
   geom_point()+
-  geom_smooth(method = 'lm',se=FALSE,col='darkred')+
-  xlab("epsilon")+
+ labs(x=expression(epsilon))+
   ylim(0,100)+
-  #theme(plot.margin=margin(t = 0, r = 0, b = 0, l = 0, unit = "pt"))+
-  theme_bw()+
+   theme_bw()+
   theme(panel.grid.major = element_blank(), 
         panel.grid.minor = element_blank())+
   ylab("")
 i_epsilon_gp
-#Nu =100
-i_nu=data.frame(cbind(params_matrix_Sint$P_nu, params_matrix_Sint$Relative_change))
-write.csv(x=i_nu,file='..//heterogeneity/nu_100.csv')
+
+
+# 7 Nu 
+i_nu=data.frame(cbind(params_matrix_Sint$nu, params_matrix_Sint$Relative_change))
+
 i_nu_g=melt(i_nu,id='X1')
 i_nu_gp<-ggplot(i_nu_g, aes(x=X1, y=value)) + 
   geom_point()+
-  geom_smooth(method = 'lm',se=FALSE,col='darkred')+
-  xlab("nu")+
+  labs(x=expression(nu))+
   ylim(0,100)+
-  #theme(plot.margin=margin(t = 0, r = 0, b = 0, l = 0, unit = "pt"))+
-  #theme_bw()+
-  #theme(panel.grid.major = element_blank(), 
-       # panel.grid.minor = element_blank())+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank())+
   ylab("")
 i_nu_gp
-#Nu 20
-i_nu_20=data.frame(cbind(params_matrix_Sint$P_nu, params_matrix_Sint$Relative_change))
-write.csv(x=i_nu_20,file='..//heterogeneity/nu_20.csv')
-i_nu_g_20=melt(i_nu_20,id='X1')
-i_nu_gp_20<-ggplot(i_nu_g_20, aes(x=X1, y=value)) + 
+# 8 beta1
+i_beta1=data.frame(cbind(params_matrix_Sint$beta1, params_matrix_Sint$Relative_change))
+i_beta1_g=melt(i_beta1,id='X1')
+i_beta1_gp<-ggplot(i_beta1_g, aes(x=X1, y=value)) + 
   geom_point()+
-  geom_smooth(method = 'lm',se=FALSE,col='darkred')+
-  xlab("nu")+
+  labs(x=expression(beta))+
   ylim(0,100)+
-  #theme(plot.margin=margin(t = 0, r = 0, b = 0, l = 0, unit = "pt"))+
-  #theme_bw()+
-  #theme(panel.grid.major = element_blank(), 
-        #panel.grid.minor = element_blank())+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank())+
   ylab("")
-i_nu_gp_20
+i_beta1_gp
 
-#mui2
+# 9 m
+i_m=data.frame(cbind(params_matrix_Sint$m, params_matrix_Sint$Relative_change))
+
+i_m_g=melt(i_m,id='X1')
+i_m_gp<-ggplot(i_m_g, aes(x=X1, y=value)) + 
+  geom_point()+
+  xlab("m")+
+  ylim(0,100)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank())+
+  ylab("")
+i_m_gp
+
+# 10 D
+i_D=data.frame(cbind(params_matrix_Sint$Time_I, params_matrix_Sint$Relative_change))
+i_D_g=melt(i_D,id='X1')
+i_D_gp<-ggplot(i_D_g, aes(x=X1, y=value)) + 
+  geom_point()+
+  xlab("D")+
+  ylim(0,100)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank())+
+  ylab("")
+i_D_gp
+
+# 10 mui2
 i_mui2=data.frame(cbind(params_matrix_Sint$P_mui2, params_matrix_Sint$Relative_change))
 i_mui2_g=melt(i_mui2,id='X1')
 i_mui2_gp<-ggplot(i_mui2_g, aes(x=X1, y=value)) + 
   geom_point()+
-  geom_smooth(method = 'lm',se=FALSE,col='darkred')+
-  xlab("mui2")+
+  labs(x=expression(mu[I2]))+
   ylim(0,100)+
-  #theme(plot.margin=margin(t = 0, r = 0, b = 0, l = 0, unit = "pt"))+
   theme_bw()+
   theme(panel.grid.major = element_blank(), 
         panel.grid.minor = element_blank())+
   ylab("")
 i_mui2_gp
 #
-#mui1
+#11 mui1
 i_mui1=data.frame(cbind(params_matrix_Sint$P_mui1, params_matrix_Sint$Relative_change))
 i_mui1_g=melt(i_mui1,id='X1')
 i_mui1_gp<-ggplot(i_mui1_g, aes(x=X1, y=value)) + 
   geom_point()+
-  geom_smooth(method = 'lm',se=FALSE,col='darkred')+
-  xlab("mui1")+
+  labs(x=expression(mu[I1]))+
   ylim(0,100)+
-  #theme(plot.margin=margin(t = 0, r = 0, b = 0, l = 0, unit = "pt"))+
   theme_bw()+
   theme(panel.grid.major = element_blank(), 
         panel.grid.minor = element_blank())+
   ylab("")
 i_mui1_gp
-#mui0
+#12 mui0
 i_mui0=data.frame(cbind(params_matrix_Sint$P_mui0, params_matrix_Sint$Relative_change))
 i_mui0_g=melt(i_mui0,id='X1')
 i_mui0_gp<-ggplot(i_mui0_g, aes(x=X1, y=value)) + 
   geom_point()+
-  geom_smooth(method = 'lm',se=FALSE,col='darkred')+
-  xlab("mui0")+
+  labs(x=expression(mu[I0]))+
   ylim(0,100)+
-  #theme(plot.margin=margin(t = 0, r = 0, b = 0, l = 0, unit = "pt"))+
   theme_bw()+
   theme(panel.grid.major = element_blank(), 
         panel.grid.minor = element_blank())+
   ylab("")
 i_mui0_gp
 
-#h
+# 13 h
 i_h=data.frame(cbind(params_matrix_Sint$P_h, params_matrix_Sint$Relative_change))
 i_h_g=melt(i_h,id='X1')
 i_h_gp<-ggplot(i_h_g, aes(x=X1, y=value)) + 
   geom_point()+
-  geom_smooth(method = 'lm',se=FALSE,col='darkred')+
   xlab("h")+
   ylim(0,100)+
-  #theme(plot.margin=margin(t = 0, r = 0, b = 0, l = 0, unit = "pt"))+
   theme_bw()+
   theme(panel.grid.major = element_blank(), 
         panel.grid.minor = element_blank())+
   ylab("")
 i_h_gp
 
-#j
+# 14 j
 i_j=data.frame(cbind(params_matrix_Sint$P_j, params_matrix_Sint$Relative_change))
 i_j_g=melt(i_j,id='X1')
 i_j_gp<-ggplot(i_j_g, aes(x=X1, y=value)) + 
   geom_point()+
-  geom_smooth(method = 'lm',se=FALSE,col='darkred')+
   xlab("j")+
   ylim(0,100)+
   theme_bw()+
@@ -551,19 +509,19 @@ i_j_gp<-ggplot(i_j_g, aes(x=X1, y=value)) +
 i_j_gp
 
 i_GG<-ggarrange(i_cdr_b_gp,i_q_gp,i_d_gp,
-                i_c_gp,i_b_gp,i_beta2_gp,
-                 i_alpha_gp,i_nu_gp, i_epsilon_gp,
+                
+                i_c_gp,i_b_gp,
+                i_nu_gp, i_epsilon_gp,
+                i_m_gp,i_beta1_gp,i_D_gp,
                 i_mui2_gp,i_mui0_gp,i_mui1_gp,
-              i_j_gp,i_h_gp,
-             
-              ncol=3, nrow=5, common.legend = TRUE,
-              legend="bottom")
+                i_j_gp,i_h_gp,
+                
+                ncol=3, nrow=5, common.legend = TRUE,
+                legend="bottom")
 
 annotate_figure(i_GG,left = text_grob("Relative incidence reduction %",size=12,rot = 90))
 
-ggarrange(i_cdr_b_gp,i_q_gp,i_d_gp,
-          i_c_gp,i_b_gp,i_beta2_gp,ncol=3, nrow=2, common.legend = TRUE,
-          legend="bottom")
-ggarrange(i_nu_gp,i_nu_gp_20)
+
+
 
 
