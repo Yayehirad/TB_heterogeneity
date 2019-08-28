@@ -1,4 +1,9 @@
-g#Scenarios
+#re-run the codes accorining to the scenario
+#Scenario1 (beta1=15,CDR=0.75)
+#Scenario2 (beta1=15,CDR=0.5)
+#Scenario3 (beta=10,CDR=0.75)
+#Scenario4 (beta=10,CDR=0.5)
+
 library(deSolve)
 library(reshape2)
 library(ggplot2)
@@ -57,62 +62,78 @@ threeIIC_model=function(current_timepoint, state_values, parameters)
   )
 }
 # Set parameters 
-#proportions from Vic contact tracing data
 N=1
+#a=0.58#0.54-0.61, mean =0.58  proportion of non-spreaders
+#alpha=0.82#0.71-0.90, mean 0.82 proportion of low-spreaders among infectious
 
-a=0.58
-b=0.31
-c=0.11
-alpha=0.22
-r=0.21
-Time_L1=1/4#time in L1 
-Time_L2=20#time in L2
-Time_I=3#time in I
-mu= 1/65#
-total_outflows_I=(1/Time_I)-mu
+Pinf=0.42# 0.39-0.46 mean 0.42 prop of infectious TB
+Pss=0.18 # 0.1-0.29 mean 0.18 proportion of ss among infectious
+
+c=Pinf*Pss#min=Pinf_min*Pss_min,max= Pinf_max*pss_max, proportion of ss among all TB
+b=Pinf*(1-Pss)#min=Pinf_min(1-Pss_max),max=Pinf_max(1-Pss_min)#proportion of LS among all TB
+a=1-Pinf #proportion of non-spreaders among all TB
+
+m=4.67#3.69-5.88 mean 4.67	
 beta0<-0
+beta1<-15# 10- 15 mean 12, event rate per low-spreaders
+#baseline CDR 
+CDR_b=0.75#min=0.5,max=0.75
+beta2<-beta1*m #event rate per super-spreaders
+r=0.21 #probability of geting reinction relative to susceptible individuals
+Time_L1=0.25#time in L1 min = 0.167, max = 1,  mean 1/4
+Time_I=3# 2-4 mean 3 duration of infectiousness
+mu= 1/65#min = 1/55, max = 1/75 mean 1/65
+total_outflows_I=(1/Time_I)-mu
 
-beta2<-40#40-60
+epsilon=0.4016#0.296-0.512, 0.4016 # M mean=0.0826,(min=0.06195,max= 0.10325)
+kappa=(1/Time_L1)-(epsilon) # kappa=3.625#(1/Time_L1)-(epsilon)
+nu=0.00195 #0.0009-0.00385, 0.00195  ##M mean=0.000594,(min=0.0004455,max= 0.0007425)
 
-P_epsilon=0.1004#
-P_nu=0.039#
-P_mui0=0.077#
-P_mui1= 0.077#
-P_mui2=0.534#
-P_h=0.045#
-P_j=0.045#
-beta1<-beta2*alpha
-epsilon=P_epsilon*(1/Time_L1)
+P_mui0=0.077#min = 0.05, max = 0.096, 0.077
+P_mui1=0.077#min = 0.05, max = 0.096, 0.077
+P_mui2=0.534#min = 0.327, max = 0.787 , 0.534
+
+P_h=0#min = 0.0, max = 0.058, 0.045
+P_j=0#min = 0.0, max = 0.058   0.045
+
+mui0=P_mui0*(total_outflows_I)
+mui1=P_mui1*(total_outflows_I)
+mui2=P_mui2*(total_outflows_I)
+
+h=P_h*(total_outflows_I)
+j=P_j*(total_outflows_I)
+
 epsilon0=epsilon*a
 epsilon1=epsilon*b
 epsilon2=epsilon*c
-kappa=(1/Time_L1)-(epsilon) 
-nu=P_nu*(1/Time_L2)
+
 nu0=nu*a
 nu1=nu*b
 nu2=nu*c
 
-mui0=P_mui0*total_outflows_I
-mui1=P_mui1*total_outflows_I
-mui2=P_mui2*total_outflows_I
+#gamma
+gamma0=(total_outflows_I)-(mui0+h)
+gamma1=(total_outflows_I)-(mui1+j)
+gamma2=(total_outflows_I)-(mui2)
 
-h=P_h*total_outflows_I
-j=P_j*total_outflows_I
-
-gamma0=total_outflows_I-(mui0)
-gamma1=total_outflows_I-(mui1)
-gamma2=total_outflows_I-(mui2)
 #baeseline scenario
-CDR_b=0.75#0.5-0.75
 #Baseline no intervention
 d=0
 q=0
 #mass intervention
-d=0
-q=0.1
+q=0.2
 #targeted intervention
+d=0
+d=0.1
+d=0.2
+d=0.3
+d=0.4
+d=0.5
+d=0.6
+d=0.7
 d=0.8
-q=0.1
+d=0.9
+d=1
 
 ##Initial values for sub population: 
 A=1 #Fully susceptible hosts
@@ -141,6 +162,7 @@ plot(Nq,ylim=c(0,1))
 
 incidence=(diff(Sena_outputEq$inc)/Nq)*100000
 plot(incidence)
+max(incidence)
 
 S_eq=Sena_outputEq$S[length(Sena_outputEq$S)]
 L1_eq=Sena_outputEq$L1[length(Sena_outputEq$L1)]
@@ -165,103 +187,104 @@ s3ICvinc=s3ICoutput$inc
 
 
 
-#Bseline
+#try
 Baseline_Incidence=(diff(s3ICvinc)/Nq)*100000
 max(Baseline_Incidence)
 plot(Baseline_Incidence)
 
-#scenario 1 high beta,high CDR
-
 Baseline1_Incidence=(diff(s3ICvinc)/Nq)*100000
-Mass1_Incidence=(diff(s3ICvinc)/Nq)*100000
-Targeted1_Incidence=(diff(s3ICvinc)/Nq)*100000
+d_0=(diff(s3ICvinc)/Nq)*100000
+d_0.1=(diff(s3ICvinc)/Nq)*100000
+d_0.2=(diff(s3ICvinc)/Nq)*100000
+d_0.3=(diff(s3ICvinc)/Nq)*100000
+d_0.4=(diff(s3ICvinc)/Nq)*100000
+d_0.5=(diff(s3ICvinc)/Nq)*100000
+d_0.6=(diff(s3ICvinc)/Nq)*100000
+d_0.7=(diff(s3ICvinc)/Nq)*100000
+d_0.8=(diff(s3ICvinc)/Nq)*100000
+d_0.9=(diff(s3ICvinc)/Nq)*100000
+d_1=(diff(s3ICvinc)/Nq)*100000
+#same CDR increase 5%
+Scenario<-cbind(s3ICvtime,Baseline1_Incidence,d_0,d_0.1,d_0.2,d_0.3,d_0.4,d_0.5,d_0.6,
+                   d_0.7,d_0.8,d_0.9,d_1)
+View(Scenario)
+write.csv(x=Scenario,file = '..//heterogeneity/output/Scenario.csv')
 
-Scenario1=cbind(s3ICvtime,Baseline1_Incidence,Mass1_Incidence,Targeted1_Incidence)
-View(Scenario1)
-write.csv(x=Scenario1,file = './/output/Scenari_1jt.csv')
-#scenario 2 High beta low CDR
-Baseline2_Incidence=(diff(s3ICvinc)/Nq)*100000
-Mass2_Incidence=(diff(s3ICvinc)/Nq)*100000
-Targeted2_Incidence=(diff(s3ICvinc)/Nq)*100000
-Scenario2=cbind(s3ICvtime,Baseline2_Incidence,Mass2_Incidence,Targeted2_Incidence)
-View(Scenario2)
-write.csv(x=Scenario2,file = '..//heterogeneity/output/Scenari_2jt.csv')
 
-#scenario 3 low beta high CDR
-Baseline3_Incidence=(diff(s3ICvinc)/Nq)*100000
-plot(Baseline3_Incidence,xlim = c(0,4000))
-Mass3_Incidence=(diff(s3ICvinc)/Nq)*100000
-Targeted3_Incidence=(diff(s3ICvinc)/Nq)*100000
-Scenario3=cbind(s3ICvtime,Baseline3_Incidence,Mass3_Incidence,Targeted3_Incidence)
-View(Scenario3)
-write.csv(x=Scenario3,file = '..//heterogeneity/output/Scenari_3jt.csv')
-#scenario 4 low beta low CDR
-Baseline4_Incidence=(diff(s3ICvinc)/Nq)*100000
-Mass4_Incidence=(diff(s3ICvinc)/Nq)*100000
-Targeted4_Incidence=(diff(s3ICvinc)/Nq)*100000
-Scenario4=cbind(s3ICvtime,Baseline4_Incidence,Mass4_Incidence,Targeted4_Incidence)
-View(Scenario4)
-
-write.csv(x=Scenario4,file = '..//heterogeneity/output/Scenari_4.csv')
 
 #plot
+cbp2<-c("#000000","#F8766D","#DB8E00","#AEA200","#64B200","#00BD5C",
+        "#00C1A7","#00BADE","#00A6FF","#B385FF","#EF67EB","#FF63B6")
 #1
-g_Scenario1=read.csv(file.choose(),header=T)
-g_Scenario1=melt(g_Scenario1,id='Time')
-g_Sc1<-ggplot(g_Scenario1,aes(x=Time,y=value,colour=variable))+
+Scenario1=read.csv(file.choose(),header=T)
+m_Sc1jt=melt(Scenario1,id='Time')
+g_Sc1jt<-ggplot(m_Sc1jt,aes(x=Time,y=value,colour=variable))+
   geom_line(size=1.3)+
   xlim(0,20)+
   ylim(0,450)+
   ylab("")+
   xlab("Time in years")+
   ggtitle("A")+
-  theme(legend.title = element_blank())
-  #theme(plot.margin = unit(c(0,0,0,0), "cm"))
-g_Sc1
+  theme_bw()+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+  legend.title = element_blank())
+    
+p1<-g_Sc1jt+scale_colour_manual(values = cbp2)
 #2
-g_Scenario2=read.csv(file.choose(),header = T)
-g_Scenario2=melt(g_Scenario2,id='Time')
-g_Sc2<-ggplot(g_Scenario2,aes(x=Time,y=value,colour=variable))+
+Scenario2=read.csv(file.choose(),header=T)
+m_Sc2jt=melt(Scenario2,id='Time')
+g_Sc2jt<-ggplot(m_Sc2jt,aes(x=Time,y=value,colour=variable))+
   geom_line(size=1.3)+
   xlim(0,20)+
   ylim(0,450)+
   ylab("")+
   xlab("Time in years")+
   ggtitle("B")+
-  theme(legend.title = element_blank())
-  #theme(plot.margin = unit(c(0,0,0,0), "cm"))
-g_Sc2
+  theme_bw()+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        legend.title = element_blank())
+p2<-g_Sc2jt+scale_colour_manual(values = cbp2)
 #3
-g_Scenario3=read.csv(file.choose(),header = T)
-g_Scenario3=melt(g_Scenario3,id='Time')
-
-g_Sc3<-ggplot(g_Scenario3,aes(x=Time,y=value,colour=variable))+
+Scenario3=read.csv(file.choose(),header=T)
+m_Sc3jt=melt(Scenario3,id='Time')
+g_Sc3jt<-ggplot(m_Sc3jt,aes(x=Time,y=value,colour=variable))+
   geom_line(size=1.3)+
   xlim(0,20)+
   ylim(0,450)+
   ylab("")+
   xlab("Time in years")+
   ggtitle("C")+
-  theme(legend.title = element_blank())
-  #theme(plot.margin = unit(c(0,0,0,0), "cm"))
-g_Sc3
-#4
-g_Scenario4=read.csv(file.choose(),header = T)
-g_Scenario4=melt(g_Scenario4,id='Time')
+  theme_bw()+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        legend.title = element_blank())
+g_Sc3jt
+p3<-g_Sc3jt+scale_colour_manual(values = cbp2)
 
-g_Sc4<-ggplot(g_Scenario4,aes(x=Time,y=value,colour=variable))+
+#4
+Scenario4=read.csv(file.choose(),header=T)
+m_Sc4jt=melt(Scenario4,id='Time')
+g_Sc4jt<-ggplot(m_Sc4jt,aes(x=Time,y=value,colour=variable))+
   geom_line(size=1.3)+
   xlim(0,20)+
   ylim(0,450)+
   ylab("")+
   xlab("Time in years")+
   ggtitle("D")+
-  theme(legend.title = element_blank())
-  #theme(plot.margin = unit(c(0,0,0,0), "cm"))
-g_Sc4
+  theme_bw()+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        legend.title = element_blank())
+g_Sc4jt
 
-F0<-ggarrange( g_Sc1,g_Sc2,g_Sc3,g_Sc4,ncol=2, nrow=2, common.legend = TRUE, legend="bottom")
-annotate_figure(F0,left = text_grob("Incidence per 100,000 population",size=12,rot = 90))
+p4<-g_Sc4jt+scale_colour_manual(values = cbp2)
+
+F0jt<-ggarrange( p1,p2,p3,p4,ncol=2, nrow=2, 
+                 common.legend = TRUE, legend="right")
+annotate_figure(F0jt,left = text_grob("Incidence per 100,000 population",size=12,rot = 90))
+
+
+
+
+
 
 
 
