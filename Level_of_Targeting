@@ -101,61 +101,68 @@ intervention_model=function(current_timepoint, state_values, parameters)
 
 # Set parameters 
 #proportions from Vic contact tracing data
+
 N=1
 
-a=0.58
-b=0.31
-c=0.11
-alpha=0.22
-r=0.21
-Time_L1=1/4#time in L1 
-Time_L2=20#time in L2
-Time_I=3#time in I
-mu= 1/65#
-total_outflows_I=(1/Time_I)-mu
+Pinf=0.42# 0.39-0.46 mean 0.42 prop of infectious TB
+Pss=0.18 # 0.1-0.29 mean 0.18 proportion of ss among infectious
+
+c=Pinf*Pss#min=Pinf_min*Pss_min,max= Pinf_max*pss_max, proportion of ss among all TB
+b=Pinf*(1-Pss)#min=Pinf_min(1-Pss_max),max=Pinf_max(1-Pss_min)#proportion of LS among all TB
+a=1-Pinf #proportion of non-spreaders among all TB
+
+m=4.67#3.69-5.88 mean 4.67	
 beta0<-0
 #Scenario 1 both high
-beta2<-60#40-60
+beta1<-15# 10- 15 mean 12, event rate per low-spreaders
 CDR_b=0.75#0.5-0.75
 #Scenario 2  high beta & low cdr
-#beta2<-60#40-60
-#CDR_b=0.5#0.5-0.75
+beta1<-15
+CDR_b=0.5#0.5-0.75
 #Scenario 3 low beta & high cdr
-#beta2<-40#40-60
-#CDR_b=0.75#0.5-0.75
+beta1<-10#
+CDR_b=0.75#0.5-0.75
 #Scenario 4 both low
-#beta2<-40#40-60
-#CDR_b=0.5#0.5-0.75
+beta1<-10#40-60
+CDR_b=0.5#0.5-0.75
 
-P_epsilon=0.1004#
-P_nu=0.039#
-P_mui0=0.077#
-P_mui1= 0.077#
-P_mui2=0.534#
-P_h=0.045#
-P_j=0.045#
-beta1<-beta2*alpha
-epsilon=P_epsilon*(1/Time_L1)
+beta2<-beta1*m #event rate per super-spreaders
+r=0.21 #probability of geting reinction relative to susceptible individuals
+Time_L1=0.25#time in L1 min = 0.167, max = 1,  mean 1/4
+Time_I=3# 2-4 mean 3 duration of infectiousness
+mu= 1/65#min = 1/55, max = 1/75 mean 1/65
+total_outflows_I=(1/Time_I)-mu
+
+epsilon=0.4016#0.296-0.512, 0.4016 # M mean=0.0826,(min=0.06195,max= 0.10325)
+kappa=(1/Time_L1)-(epsilon) # kappa=3.625#(1/Time_L1)-(epsilon)
+nu=0.00195 #0.0009-0.00385, 0.00195  ##M mean=0.000594,(min=0.0004455,max= 0.0007425)
+
+P_mui0=0.077#min = 0.05, max = 0.096, 0.077
+P_mui1=0.077#min = 0.05, max = 0.096, 0.077
+P_mui2=0.534#min = 0.327, max = 0.787 , 0.534
+
+P_h=0#min = 0.0, max = 0.058, 0.045
+P_j=0#min = 0.0, max = 0.058   0.045
+
+mui0=P_mui0*(total_outflows_I)
+mui1=P_mui1*(total_outflows_I)
+mui2=P_mui2*(total_outflows_I)
+
+h=P_h*(total_outflows_I)
+j=P_j*(total_outflows_I)
+
 epsilon0=epsilon*a
 epsilon1=epsilon*b
 epsilon2=epsilon*c
-kappa=(1/Time_L1)-(epsilon) 
-nu=P_nu*(1/Time_L2)
+
 nu0=nu*a
 nu1=nu*b
 nu2=nu*c
 
-mui0=P_mui0*total_outflows_I
-mui1=P_mui1*total_outflows_I
-mui2=P_mui2*total_outflows_I
-
-h=P_h*total_outflows_I
-j=P_j*total_outflows_I
-
-gamma0=total_outflows_I-(mui0)
-gamma1=total_outflows_I-(mui1)
-gamma2=total_outflows_I-(mui2)
-
+#gamma
+gamma0=(total_outflows_I)-(mui0+h)
+gamma1=(total_outflows_I)-(mui1+j)
+gamma2=(total_outflows_I)-(mui2)
 #baseline CDR
 cdr0_b=CDR_b
 cdr1_b=CDR_b
@@ -177,7 +184,7 @@ G=0 # diagnosed
 parameter_list=c(N=N,mu=mu,beta0=beta0, beta1=beta1, beta2=beta2,epsilon0=epsilon0,epsilon1=epsilon1,epsilon2=epsilon2, 
                  kappa=kappa,gamma0=gamma0,gamma1=gamma1,gamma2=gamma2,nu0=nu0,nu1=nu1,nu2=nu2, 
                  mui0=mui0,mui1=mui1,mui2=mui2,delta0=delta0,delta1=delta1,delta2=delta2,r=r,
-                 h=h,j=j)  
+                 h=h,j=j,CDR_b=CDR_b)  
 n=21
 z=21
 H=matrix(rep(0,n*z),nrow=n)
@@ -255,28 +262,33 @@ H[k,i]=Relative_change
  
 }
 rownames(H) <- c("0.00", "0.05", "0.10", "0.15", "0.20", "0.25", "0.30", 
-                 "0.35", 0.40, "0.45", "0.50", "0.55", "0.60", "0.65", "0.70",
+                 "0.35", "0.40", "0.45", "0.50", "0.55", "0.60", "0.65", "0.70",
                  "0.75", "0.80", "0.85", "0.90", "0.95", "1.00")
 colnames(H)<-c("0.00", "0.02", "0.04", "0.06", "0.08", "0.10", "0.12",
                "0.14", "0.16", "0.18", "0.20", "0.22", "0.24", "0.26", "0.28",
                "0.30", "0.32", "0.34", "0.36", "0.38", "0.40")
 
 
-
-#heatmap
-
-#change col names by 0.00 0.04 0.08 0.12 0.16 0.20 0.24 0.28 0.32 0.36 0.40
-#change row names by  0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0
-
 #produce each matrix
 H_A<-H
+write.csv(x=H_A,file = '..//heterogeneity/output/H_A.csv')
 H_B<-H
+write.csv(x=H_B,file = '..//heterogeneity/output/H_B.csv')
 H_C<-H
+write.csv(x=H_C,file = '..//heterogeneity/output/H_C.csv')
 H_D<-H
+write.csv(x=H_D,file = '..//heterogeneity/output/H_D.csv')
+
+
+
+# read
+H_A<-read.csv(file.choose(),header = T,check.names=FALSE)
+View(H_A)
+H_B<-read.csv(file.choose())
+H_C<-read.csv(file.choose())
+H_D<-read.csv(file.choose())
 # set range
-
 rng2=range(c((H_A),(H_B),(H_C),(H_D)))
-
 
 #HH_1=read.csv(file.choose(),header = T,row.names = 1)
 #HH_1m=as.matrix(HH_1)
@@ -285,8 +297,8 @@ HSc1<-HH_1melt
 A_gp<-ggplot(data=HH_1melt,aes(x=Var2,y=Var1,fill=value))+
   geom_tile()+
   scale_fill_gradient2(low="red", mid="blue", high="green", 
-                       midpoint=mean(rng2), breaks=seq(0,60,10),
-                     limits=c(0, 58))+
+                       midpoint=mean(rng2), breaks=seq(0,54,10),
+                     limits=c(0, 54))+
   ylab("Targeting super-spreaders")+
   xlab("Relative CDR increase")+
   labs(fill="Relative incidence reduction %")+
@@ -305,8 +317,8 @@ HSc2<-HH_2melt
 B_gp<-ggplot(data=HH_2melt,aes(x=Var2,y=Var1,fill=value))+
   geom_tile()+
   scale_fill_gradient2(low="red", mid="blue", high="green", 
-                       midpoint=mean(rng2), breaks=seq(0,60,10),
-                       limits=c(0, 58))+
+                       midpoint=mean(rng2), breaks=seq(0,54,10),
+                       limits=c(0, 54))+
   ylab("Targeting super-spreaders")+
   xlab("Relative CDR increase")+
   labs(fill="Relative incidence reduction %")+
@@ -324,8 +336,8 @@ HSc3<-HH_3melt
 C_gp<-ggplot(data=HH_3melt,aes(x=Var2,y=Var1,fill=value))+
   geom_tile()+
   scale_fill_gradient2(low="red", mid="blue", high="green", 
-                       midpoint=mean(rng2), breaks=seq(0,60,10),
-                       limits=c(0, 58))+
+                       midpoint=mean(rng2), breaks=seq(0,54,10),
+                       limits=c(0, 54))+
   ylab("Targeting super-spreaders")+
   xlab("Relative CDR increase")+
   labs(fill="incidence reduction")+
@@ -343,8 +355,8 @@ HSc4<-HH_4melt
 D_gp<-ggplot(data=HH_4melt,aes(x=Var2,y=Var1,fill=value))+
   geom_tile()+
   scale_fill_gradient2(low="red", mid="blue", high="green", 
-                       midpoint=mean(rng2),breaks=seq(0,60,10),
-                       limits=c(0, 58))+
+                       midpoint=mean(rng2),breaks=seq(0,54,10),
+                       limits=c(0, 54))+
   
   ylab("Targeting super-spreaders")+
   xlab("Relative CDR increase")+
@@ -356,11 +368,10 @@ D_gp<-ggplot(data=HH_4melt,aes(x=Var2,y=Var1,fill=value))+
   #scale_y_continuous(expand = c(0,0)) + 
   #scale_x_discrete(expand = c(0,0))
 D_gp
-heats<-ggarrange( A_gp,B_gp,C_gp,D_gp,ncol=2, nrow=2, common.legend = TRUE, legend="bottom")
+heats<-ggarrange( A_gp,B_gp,C_gp,D_gp,ncol=2, nrow=2, common.legend = TRUE, legend="right")
 heats
 
 annotate_figure(heats,left = text_grob("Incidence per 100,000 population",size=12,rot = 90))
-
 
 
 
