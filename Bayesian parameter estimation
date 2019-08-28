@@ -1,0 +1,56 @@
+
+//STAN CODE
+//create a function for composit statistical distributions
+functions {
+  
+  real myfunc_lpmf(int v, real beta1,real mult,real outflow, real alpha, real a) {
+  
+    real fls; //PMF, fls=P(Z=v)~geom ()in low-spreaders
+    real fss; //PMF, super-spreaders fss=P(Z=v)in super-spreaders
+    real f_all; // PMF all including non-spreaders
+    real beta2;//transmission rate per super-spreaders
+    
+    beta2 = mult*beta1;
+    
+    fls = (1-(beta1/(beta1+outflow)))*pow((beta1/(beta1+outflow)),v); 
+   
+    fss = (1-(beta2/(beta2+outflow)))*pow((beta2/(beta2+outflow)),v);
+  
+    f_all = (1-a)*alpha*fls + (1-(a+alpha*(1-a)))*fss; 
+    //proportion of low-spreaders=(1-a)*alpha, proportion of super-spreaders=1-(a+alpha*(1-a))
+   
+    if(v==0) {
+      f_all = f_all+a; //add zeros for non-spreaders
+    }
+    
+    return  log(f_all);
+    
+  }
+  
+}
+   
+data {
+  int N;
+  int Y[N];
+  real outflow;
+
+} 
+
+parameters{
+     real <lower=0,upper=1> a; //proportion of non-spreaders
+     real <lower=0,upper=1> alpha; // proportion of low-spreders given proportion of non-spreaders
+     real <lower=0> beta1; // transmision rate low-spreaders
+     real <lower=1> mult;//relative infectiousness of super-spreaders compared to low-spreaders
+     
+}
+
+
+model {
+   beta1 ~ uniform(0,100);//priori
+  alpha ~ uniform(0,1);
+  a ~ uniform(0,1);
+   for( i in 1:N)
+   Y[i] ~ myfunc(beta1, mult, outflow,  alpha,  a); //likelihood  
+   
+}
+
