@@ -1,0 +1,58 @@
+
+#R-code 
+library(StanHeaders)
+library(ggplot2)
+library(rstan)
+library(reshape)
+library(plotrix)
+library(psych)
+#Step 1 import empiric data (number of secondary infections per index) ,Y
+offspring<-read.csv(file.choose())
+View(offspring)
+
+Y<-offspring$X0
+N<-length(Y)
+outflow=1/0.164271# the rate of leaving the active TB compartments estimated from Victorian setting the median is 60 days (IQR 30-115.5). For comparison, the mean is 95.5 (SD 111) days.
+
+#step 2-> Go to stan file and run it
+
+#Step 3compile model
+model<-stan_model('Geom.stan')#call the stan file
+
+#Step 4 pass data to stan and run model
+options(mc.cores=4)#number of processors
+fit<-sampling(model,list(N=N,Y=Y,outflow=outflow),iter=2000,chains=4)
+
+#Step 5 ,diagnostics
+print(fit)
+params<-extract(fit)
+View(params)
+ print(summary(fit)$summary)
+
+stan_diag(fit, information=c("sample"))
+#Output visualisation
+# convert stan object to R dataframe
+fit_d<-as.data.frame(fit)
+View(fit_d)
+
+# View(fit)
+x11(); plot(fit)
+
+x11(); traceplot(fit_d, pars=c('a','alpha','mult','beta1'), inc_warmup=TRUE)
+
+x11(); pairs(fit, lower.panel = NULL,pars=c('a','alpha','mult','beta1'))
+#plot pairwise comparisons with correlation coefficients
+fit_dr<-fit_d[,c("a","alpha","mult","beta1")]#just rearranging column orders
+
+
+pairs.panels(fit_dr[,-5], 
+             method = "pearson", # correlation method
+             hist.col = "#00AFBB",
+             density = FALSE,  # show density plots
+             ellipses = FALSE, # show correlation ellipses
+             lm=FALSE,
+             smooth=FALSE,
+             rug = FALSE
+             
+)
+
