@@ -1,4 +1,4 @@
-# multivariate sensitivity of intervention effect to parameter ranges
+# multivariate sensitivity of Equilibrium incidence to parameter ranges
 library(deSolve)
 library(reshape2)
 library(ggplot2)
